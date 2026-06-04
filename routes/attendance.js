@@ -24,11 +24,11 @@ router.post('/take', async (req, res) => {
     const { student_id, name } = identifier;
 
     // Step 2: Check if this student was already marked today
-    // DATE() extracts just the date part from a datetime (ignores the time)
+    // Use attendance_date (a plain DATE column) for the duplicate check
     const today = new Date().toISOString().split('T')[0]; // "2026-06-02"
 
     const [existing] = await db.execute(
-      `SELECT id FROM attendance WHERE student_id = ? AND DATE(created_at) = ?`,
+      `SELECT id FROM attendance WHERE student_id = ? AND attendance_date = ?`,
       [student_id, today]
     );
 
@@ -41,10 +41,10 @@ router.post('/take', async (req, res) => {
       });
     }
 
-    // Step 3: Insert the attendance record
+    // Step 3: Insert the attendance record (attendance_date defaults to CURDATE())
     await db.execute(
-      `INSERT INTO attendance (student_id, class_id, status) VALUES (?, ?, 'present')`,
-      [student_id, classId || null]
+      `INSERT INTO attendance (student_id, class_id, status, attendance_date) VALUES (?, ?, 'present', ?)`,
+      [student_id, classId || null, today]
     );
 
     res.json({
@@ -73,7 +73,7 @@ router.get('/', async (req, res) => {
     const params = [];
 
     // Dynamically add filters only if they were provided
-    if (date)    { query += ' AND DATE(a.created_at) = ?'; params.push(date); }
+    if (date)    { query += ' AND a.attendance_date = ?'; params.push(date); }
     if (classId) { query += ' AND a.class_id = ?';         params.push(classId); }
 
     query += ' ORDER BY a.created_at DESC';
@@ -92,7 +92,7 @@ router.get('/stats', async (req, res) => {
     const [[{ totalStudents }]] = await db.execute('SELECT COUNT(*) AS totalStudents FROM students');
     const [[{ totalClasses }]]  = await db.execute('SELECT COUNT(*) AS totalClasses FROM classes');
     const [[{ presentToday }]]  = await db.execute(
-      `SELECT COUNT(*) AS presentToday FROM attendance WHERE DATE(created_at) = ?`, [today]
+      `SELECT COUNT(*) AS presentToday FROM attendance WHERE attendance_date = ?`, [today]
     );
 
     res.json({
