@@ -41,7 +41,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ── POST /api/auth/login ────────────────────────────────────
+// ── POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -93,7 +93,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ── GET /api/auth/profile ───────────────────────────────────
+// ── GET /api/auth/profile
 // Protected — requires a valid token
 router.get('/profile', protect, async (req, res) => {
   try {
@@ -112,7 +112,7 @@ router.get('/profile', protect, async (req, res) => {
   }
 });
 
-// ── PUT /api/auth/profile ───────────────────────────────────
+// ── PUT /api/auth/profile
 // Update the admin's own profile (what your Profile page sends)
 router.put('/profile', protect, async (req, res) => {
   const { fullName, email, phone } = req.body;
@@ -130,7 +130,7 @@ router.put('/profile', protect, async (req, res) => {
   }
 });
 
-// ── PUT /api/auth/change-password ──────────────────────────
+// ── PUT /api/auth/change-password 
 router.put('/change-password', protect, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 

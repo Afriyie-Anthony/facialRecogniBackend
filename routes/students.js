@@ -64,4 +64,31 @@ router.get('/classes', async (req, res) => {
   }
 });
 
+// PUT /api/students/:id — update a student
+router.put('/:id', async (req, res) => {
+  const { name, class_id, student_id } = req.body;
+  if (!name || !class_id || !student_id) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  try {
+    await db.execute(
+      'UPDATE students SET name = ?, class_id = ?, student_id = ? WHERE id = ?',
+      [name, class_id, student_id, req.params.id]
+    );
+    res.json({ success: true, message: 'Student updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update student' });
+  }
+});
+
+// DELETE /api/students/:id — delete a student
+router.delete('/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM students WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Student deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
+
 module.exports = router;
