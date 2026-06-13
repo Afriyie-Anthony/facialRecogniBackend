@@ -177,6 +177,109 @@ router.get('/dashboard-stats', async (req, res) => {
   }
 });
 
+// GET /api/attendance/analytics-stats — specific stats for the Analytics Page
+router.get('/analytics-stats', async (req, res) => {
+  const { range } = req.query; // '7days', '30days', 'all'
+  
+  let dateFilter = '';
+  if (range === '7days') {
+    dateFilter = ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ';
+  } else if (range === '30days') {
+    dateFilter = ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ';
+  }
+
+  let overallDateFilter = '';
+  if (range === '7days') {
+    overallDateFilter = ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ';
+  } else if (range === '30days') {
+    overallDateFilter = ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ';
+  }
+
+  try {
+    // overallStats
+    const [overallRaw] = await db.execute(`
+      SELECT 
+        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as totalPresent,
+        SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as totalAbsent,
+        COUNT(*) as totalRecords
+      FROM attendance
+      WHERE 1=1 ${overallDateFilter}
+    `);
+    
+    // byClass
+    const [byClassRaw] = await db.execute(`
+      SELECT 
+        c.name as className,
+        COUNT(DISTINCT s.id) as total,
+        SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present,
+        SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent,
+        COUNT(a.id) as totalMarked
+      FROM classes c
+      LEFT JOIN students s ON s.class_id = c.id
+      LEFT JOIN attendance a ON a.student_id = s.student_id ${dateFilter}
+      GROUP BY c.id, c.name
+    `);
+
+    // dailyTrend
+    const [trendRaw] = await db.execute(`
+      SELECT 
+        attendance_date as date,
+        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present,
+        SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent
+      FROM attendance
+      WHERE 1=1 ${overallDateFilter}
+      GROUP BY attendance_date
+      ORDER BY attendance_date ASC
+    `);
+
+    const totalPresent = Number(overallRaw[0].totalPresent) || 0;
+    const totalAbsent = Number(overallRaw[0].totalAbsent) || 0;
+    const totalRecords = Number(overallRaw[0].totalRecords) || 0;
+    const overallRate = totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 100) : 0;
+
+    const byClass = byClassRaw.map(row => {
+      const present = Number(row.present) || 0;
+      const absent = Number(row.absent) || 0;
+      const totalMarked = Number(row.totalMarked) || 0;
+      const attendanceRate = totalMarked > 0 ? Math.round((present / totalMarked) * 100) : 0;
+      return {
+        className: row.className,
+        total: Number(row.total) || 0,
+        present,
+        absent,
+        totalMarked,
+        attendanceRate
+      };
+    }).sort((a, b) => b.attendanceRate - a.attendanceRate);
+
+    const dailyTrend = trendRaw.map(row => {
+      const present = Number(row.present) || 0;
+      const absent = Number(row.absent) || 0;
+      const total = present + absent;
+      const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+      return {
+        date: row.date.toISOString().split('T')[0],
+        present,
+        absent,
+        rate
+      };
+    });
+
+    res.json({
+      overallStats: { totalPresent, totalAbsent, totalRecords, overallRate },
+      byClass,
+      dailyTrend,
+      topPerformers: byClass.slice(0, 3),
+      bottomPerformers: byClass.slice(-3).reverse(),
+      attendanceDistribution: byClass.map(item => ({ name: item.className, attendance: item.attendanceRate }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching analytics stats:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics stats' });
+  }
+});
+
 // DELETE /api/attendance/:id — remove an attendance record
 router.delete('/:id', async (req, res) => {
   try {
