@@ -50,16 +50,32 @@ router.post('/take', async (req, res) => {
       });
     }
 
-    // Step 3: Insert the attendance record
+    // Step 3: Check cutoff time and determine status
+    const [settingsRows] = await db.execute('SELECT cutoff_time, allow_late_marking FROM settings LIMIT 1');
+    const settings = settingsRows[0] || { cutoff_time: '09:00:00', allow_late_marking: 1 };
+    
+    let status = 'present';
+    const now = new Date();
+    const currentTimeString = now.toTimeString().split(' ')[0]; // e.g., "08:15:30"
+    
+    if (currentTimeString > settings.cutoff_time) {
+      if (!settings.allow_late_marking) {
+        return res.status(403).json({ error: 'Attendance cutoff time has passed. Late marking is disabled.' });
+      }
+      status = 'late';
+    }
+
+    // Step 4: Insert the attendance record
     await db.execute(
-      `INSERT INTO attendance (student_id, class_id, status, attendance_date) VALUES (?, ?, 'present', ?)`,
-      [student_id, studentClass.class_id, today]
+      `INSERT INTO attendance (student_id, class_id, status, attendance_date) VALUES (?, ?, ?, ?)`,
+      [student_id, studentClass.class_id, status, today]
     );
 
     res.json({
       success: true,
-      message: `Attendance marked for ${name}`,
+      message: `${name} marked ${status} successfully`,
       student: { ...identifier, class_name: studentClass.class_name },
+      status
     });
   } catch (error) {
     console.error(error);
