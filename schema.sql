@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS students (
   name           VARCHAR(150)  NOT NULL,
   class_id       INT UNSIGNED           DEFAULT NULL,
   face_enrolled  TINYINT(1)    NOT NULL DEFAULT 0,
+  face_template_id VARCHAR(100)         DEFAULT NULL,  -- ID returned by face API; needed for delete/update
   created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
@@ -79,3 +80,11 @@ CREATE TABLE IF NOT EXISTS settings (
 
 INSERT IGNORE INTO settings (id, school_name, default_session, cutoff_time, allow_late_marking)
 VALUES (1, 'My School', '2025/2026', '09:00:00', 1);
+
+
+-- ── Migration: add face_template_id to existing databases ──────────────────
+-- Safe to run multiple times (IF NOT EXISTS guard via column check).
+-- If you are setting up fresh from this schema.sql you can ignore this block.
+ALTER TABLE students
+  ADD COLUMN IF NOT EXISTS face_template_id VARCHAR(100) DEFAULT NULL
+    COMMENT 'Template ID returned by face API on enroll; used for DELETE /api/v1/face/templates/<id>';

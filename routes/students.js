@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const { enrollFace } = require('../services/faceApi');
+const { enrollFace, deleteFace } = require('../services/faceApi');
 
 // GET /api/students — fetch all students
 // "async" because we're waiting on a database query
@@ -36,15 +36,21 @@ router.post('/enroll', async (req, res) => {
 
   try {
     // Step 1: Send the face to FaceAPI for encoding
-    await enrollFace(imageBase64, { student_id: studentId, name });
+    // The API returns a template_id we must store — it's our handle for updating/deleting this face later
+    const faceResult = await enrollFace(imageBase64, { student_id: studentId, name });
+    const templateId = faceResult?.template_id || faceResult?.id || null;
 
-    // Step 2: Save the student in our own database
+    // Step 2: Save the student in our own database, including the template_id
     // The ? placeholders prevent SQL injection attacks
     await db.execute(
-      `INSERT INTO students (student_id, name, class_id, face_enrolled)
-       VALUES (?, ?, ?, 1)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), class_id = VALUES(class_id)`,
-      [studentId, name, classId]
+      `INSERT INTO students (student_id, name, class_id, face_enrolled, face_template_id)
+       VALUES (?, ?, ?, 1, ?)
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         class_id = VALUES(class_id),
+         face_enrolled = 1,
+         face_template_id = VALUES(face_template_id)`,
+      [studentId, name, classId, templateId]
     );
 
     res.json({ success: true, message: `${name} enrolled successfully` });
@@ -81,12 +87,42 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/students/:id — delete a student
+// DELETE /api/students/:id — delete a student AND remove their face from the model
 router.delete('/:id', async (req, res) => {
   try {
+    // Step 1: Fetch the student record — we need their name and face_template_id
+    const [rows] = await db.execute(
+      'SELECT student_id, name, face_enrolled, face_template_id FROM students WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const student = rows[0];
+
+    // Step 2: Remove face template from the recognition model (best-effort)
+    // face_template_id is the ID returned by the face API when the student was enrolled.
+    // Without it we cannot call the delete endpoint, so we skip and just warn.
+    if (student.face_enrolled && student.face_template_id) {
+      try {
+        await deleteFace(student.face_template_id);
+      } catch (faceError) {
+        console.error(`Warning: could not remove face template for "${student.name}":`, faceError.message);
+        // Continue — don't block the DB deletion over a model error
+      }
+    } else if (student.face_enrolled && !student.face_template_id) {
+      // Enrolled before we started storing template_id — we can't delete from model
+      console.warn(`Student "${student.name}" is enrolled but has no template_id stored — face NOT removed from model.`);
+    }
+
+    // Step 3: Delete the student from our database
     await db.execute('DELETE FROM students WHERE id = ?', [req.params.id]);
-    res.json({ success: true, message: 'Student deleted successfully' });
+
+    res.json({ success: true, message: `${student.name} deleted successfully` });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to delete student' });
   }
 });

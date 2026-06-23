@@ -56,4 +56,31 @@ async function recognizeFace(imageBase64) {
   return data; // { identifier: { student_id, name } }
 }
 
-module.exports = { enrollFace, recognizeFace };
+
+// Called when DELETING A STUDENT
+// Permanently removes the face template from the model workspace using the
+// template_id that was returned when the student was originally enrolled.
+// Endpoint: DELETE /api/v1/face/templates/<template_id>
+async function deleteFace(templateId) {
+  const response = await fetch(`${FACE_API_BASE}/api/v1/face/templates/${templateId}`, {
+    method: 'DELETE',
+    headers,
+  });
+
+  // 404 means the template was already removed or never saved — not an error
+  if (response.status === 404) {
+    console.warn(`deleteFace: template "${templateId}" not found in model — already removed?`);
+    return null;
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('FaceAPI Delete Error:', data);
+    throw new Error(data.message || 'Face deletion failed');
+  }
+
+  return data;
+}
+
+module.exports = { enrollFace, recognizeFace, deleteFace };
