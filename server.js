@@ -12,7 +12,27 @@ const protect          = require('./middleware/auth');
 
 const app = express();
 
-app.use(cors());
+// ── CORS ────────────────────────────────────────────────────────────────────
+// Only allow requests from our frontend domain(s).
+// Add FRONTEND_URL=https://your-app.vercel.app to your .env file.
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,          // Production Vercel URL (from .env)
+  'http://localhost:5173',            // Vite dev server default
+  'http://localhost:3000',            // Alternative local port
+].filter(Boolean);                   // Remove undefined if FRONTEND_URL not set
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin) or whitelisted origins
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin "${origin}" is not allowed`));
+    }
+  },
+  credentials: true,
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 // Public routes — no token needed

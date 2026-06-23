@@ -1,14 +1,26 @@
 // routes/auth.js
-const express  = require('express');
-const router   = express.Router();
-const bcrypt   = require('bcryptjs');
-const jwt      = require('jsonwebtoken');
-const db       = require('../config/db');
-const protect  = require('../middleware/auth');
+const express     = require('express');
+const router      = express.Router();
+const bcrypt      = require('bcryptjs');
+const jwt         = require('jsonwebtoken');
+const rateLimit   = require('express-rate-limit');
+const db          = require('../config/db');
+const protect     = require('../middleware/auth');
+
+// ── Rate limiter for login ────────────────────────────────────────────────────
+// Max 5 failed attempts per IP per 15 minutes to block brute-force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // only count failed attempts toward the limit
+});
 
 // ── POST /api/auth/register ─────────────────────────────────
-// Creates the first admin account
-// In production you'd protect this route or remove it after setup
+// Creates the FIRST admin account only.
+// Once one admin exists this route is permanently locked — use the app to manage accounts.
 router.post('/register', async (req, res) => {
   const { fullName, email, phone, password } = req.body;
 
@@ -17,6 +29,14 @@ router.post('/register', async (req, res) => {
   }
 
   try {
+    // Safety lock — only allow registration when zero admins exist
+    const [[{ count }]] = await db.execute('SELECT COUNT(*) AS count FROM admins');
+    if (count > 0) {
+      return res.status(403).json({
+        error: 'Registration is closed. An admin account already exists.',
+      });
+    }
+
     // Check if email already exists
     const [existing] = await db.execute(
       'SELECT id FROM admins WHERE email = ?', [email]
@@ -42,7 +62,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ── POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {

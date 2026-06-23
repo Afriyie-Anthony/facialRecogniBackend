@@ -70,6 +70,27 @@ router.get('/classes', async (req, res) => {
   }
 });
 
+// GET /api/students/:id — fetch a single student by DB primary key
+router.get('/:id', async (req, res) => {
+  try {
+    const [rows] = await db.execute(`
+      SELECT s.*, c.name AS class_name
+      FROM students s
+      LEFT JOIN classes c ON s.class_id = c.id
+      WHERE s.id = ?
+    `, [req.params.id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch student' });
+  }
+});
+
 // PUT /api/students/:id — update a student
 router.put('/:id', async (req, res) => {
   const { name, class_id, student_id } = req.body;

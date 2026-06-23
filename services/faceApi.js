@@ -11,12 +11,29 @@ const headers = {
   'X-API-SECRET': process.env.FACE_API_SECRET,
 };
 
+// Wraps fetch() with an AbortController timeout so a slow/unresponsive
+// face API never hangs the entire Express server indefinitely.
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Face API request timed out after ${TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 
 async function enrollFace(imageBase64, identifier) {
   // Strip data:image/...;base64, prefix if it exists
   const cleanImage = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-  const response = await fetch(FACE_API_BASE + '/api/v1/face/encode', {
+  const response = await fetchWithTimeout(FACE_API_BASE + '/api/v1/face/encode', {
     method: 'POST',
     headers,
     body: JSON.stringify({ image: cleanImage, identifier }),
@@ -40,7 +57,7 @@ async function recognizeFace(imageBase64) {
   // Strip data:image/...;base64, prefix if it exists
   const cleanImage = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-  const response = await fetch(FACE_API_BASE + '/api/v1/face/decode', {
+  const response = await fetchWithTimeout(FACE_API_BASE + '/api/v1/face/decode', {
     method: 'POST',
     headers,
     body: JSON.stringify({ image: cleanImage }),
@@ -62,7 +79,7 @@ async function recognizeFace(imageBase64) {
 // template_id that was returned when the student was originally enrolled.
 // Endpoint: DELETE /api/v1/face/templates/<template_id>
 async function deleteFace(templateId) {
-  const response = await fetch(`${FACE_API_BASE}/api/v1/face/templates/${templateId}`, {
+  const response = await fetchWithTimeout(`${FACE_API_BASE}/api/v1/face/templates/${templateId}`, {
     method: 'DELETE',
     headers,
   });

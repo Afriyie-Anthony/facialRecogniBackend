@@ -196,20 +196,19 @@ router.get('/dashboard-stats', async (req, res) => {
 // GET /api/attendance/analytics-stats — specific stats for the Analytics Page
 router.get('/analytics-stats', async (req, res) => {
   const { range } = req.query; // '7days', '30days', 'all'
-  
-  let dateFilter = '';
-  if (range === '7days') {
-    dateFilter = ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ';
-  } else if (range === '30days') {
-    dateFilter = ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ';
-  }
 
-  let overallDateFilter = '';
-  if (range === '7days') {
-    overallDateFilter = ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ';
-  } else if (range === '30days') {
-    overallDateFilter = ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ';
-  }
+  // Whitelist — never interpolate user input directly into SQL
+  const DATE_FILTERS = {
+    '7days':  ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ',
+    '30days': ' AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ',
+  };
+  const OVERALL_FILTERS = {
+    '7days':  ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) ',
+    '30days': ' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) ',
+  };
+
+  const dateFilter    = DATE_FILTERS[range]    || '';
+  const overallDateFilter = OVERALL_FILTERS[range] || '';
 
   try {
     // overallStats
